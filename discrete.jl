@@ -1,6 +1,3 @@
-#!/usr/bin/env julia
-
-
 module discrete
 
 include("plotting.jl"); plt = plotting
@@ -44,7 +41,7 @@ function run(V, T, num_time_steps = 500)
   while t != num_time_steps
 
     print("\r Update #$t")
-    update_V!( V, T )
+    async_update!( V, T )
     plt.plot_heatmap(V)
     sleep(0.01)
 
@@ -74,7 +71,7 @@ function rand_V(num_units, T=UInt8)
 end
 
 
-function update_all!(V,T)
+function sync_update!(V,T)
 
   inputs = T*V
 
@@ -86,7 +83,8 @@ function update_all!(V,T)
 
 end
 
-function update_V!(V, T)
+
+function async_update!(V, T)
 
   inputs = T*V
 
@@ -96,6 +94,130 @@ function update_V!(V, T)
   elseif inputs[i] < 0 V[i] = 0
   end
 
+end
+
+
+function fill_band!(T, j, band, exc_val, inh_val)
+
+  for i in 1:size(T,1)
+    #if the band wraps around borders
+    if band[1] > band[2] && (i >= band[1] || i <= band[2])
+      T[i,j] = exc_val  
+      continue 
+    elseif band[1] < band[2] && i >= band[1] && i <= band[2]
+      T[i,j] = exc_val
+      continue
+    elseif band[1] == band[2] && i == band[1]
+      T[i,j] = exc_val
+      continue
+    end
+      
+    T[i,j] = inh_val
+  end
+    
+end
+
+
+"""
+"""
+function banded_T( num_units, exc_val = 1, inh_val = -1, band_width=1 )
+
+  tT = typeof(exc_val) #determining type
+  T = Array{tT,2}(num_units,num_units)
+
+  for j in 1:num_units
+
+    #determining bounds for the band
+    exc_is = [ j-band_width, j + band_width ]
+    if exc_is[1] < 1          exc_is[1] += num_units end
+    if exc_is[2] > num_units  exc_is[2] -= num_units end
+
+    fill_band!(T,j,exc_is,exc_val,inh_val)
+  end
+
+  T
+end
+
+
+function leading_T( num_units, exc_val = 1, inh_val = -1, band_width = 1 )
+
+  tT = typeof(exc_val) #determining type
+  T = Array{tT,2}(num_units,num_units)
+
+  for j in 1:num_units
+
+    #bounds for the band
+    exc_is = [ j - band_width, j ]
+    
+    if exc_is[1] < 1   exc_is[1] += num_units end
+    if exc_is[2] < 1   exc_is[2] += num_units end
+
+    fill_band!(T,j,exc_is,exc_val,inh_val)
+  end
+
+  T
+end
+
+
+function lagging_T( num_units, exc_val = 1, inh_val = -1, band_width = 1 )
+
+  tT = typeof(exc_val) #type
+  T = Array{tT,2}(num_units,num_units)
+
+  for j in 1:num_units
+
+    #bounds for the band
+    exc_is = [ j, j + band_width ]
+
+    if exc_is[1] > num_units  exc_is[1] -= num_units end
+    if exc_is[2] > num_units  exc_is[2] -= num_units end
+
+    fill_band!(T,j,exc_is,exc_val,inh_val)
+  end
+
+  T
+end
+
+
+function run_banded( num_time_steps = 30, num_units = 100,
+                     exc_val = 5, inh_val = -1, band_width = 5 )
+  T = banded_T(num_units, exc_val, inh_val, band_width)
+  V = rand_V(num_units)
+
+  p = plt.plot_line(V[:], true)
+  show(p)
+
+  println("Enter to continue")
+  readline(STDIN)
+  t = 0
+  while t != num_time_steps
+
+    print("\r Update #$t")
+    sync_update!( V, T )
+    plt.plot_line(V[:])
+    sleep(0.01)
+
+    t += 1
+  end
+
+  V, T
+end
+
+
+function continue_banded( V, T, num_time_steps = 100 )
+
+  t = 0
+
+  while t != num_time_steps
+    print("\r Update #$t")
+    sync_update!(V,T)
+    plt.plot_line(V[:])
+    sleep(0.01)
+
+    t += 1
+  end
+
+  V,T
 end
 
 
